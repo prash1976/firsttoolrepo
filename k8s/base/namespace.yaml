@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: firstapp
+  labels:
+    app.kubernetes.io/name: firstapp
+    environment: dev

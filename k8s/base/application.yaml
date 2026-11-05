@@ -1,0 +1,137 @@
+# 1. Application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: firstapp-config
+  namespace: firstapp
+data:
+  SERVER_PORT: "9766"
+  DB_URL: "jdbc:postgresql://postgres-service:5432/practisedb"
+
+---
+# 2. PostgreSQL persistent storage
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: firstapp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+# 3. PostgreSQL Deployment
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: firstapp
+spec:
+  serviceName: postgres-service
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:18
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USERNAME
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: POSTGRES_DB
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+
+---
+# 4. PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-service
+  namespace: firstapp
+spec:
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+
+---
+# 5. Spring Boot Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: firstapp
+  namespace: firstapp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: firstapp
+  template:
+    metadata:
+      labels:
+        app: firstapp
+    spec:
+      containers:
+        - name: firstapp
+          image: yerravalli/firstapp:1.5
+          ports:
+            - containerPort: 9766
+          envFrom:
+            - configMapRef:
+                name: firstapp-config
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: DB_PASSWORD
+
+---
+# 6. Spring Boot Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: firstapp-service
+  namespace: firstapp
+spec:
+  type: NodePort
+  selector:
+    app: firstapp
+  ports:
+    - port: 9766
+      targetPort: 9766
+      nodePort: 30766
